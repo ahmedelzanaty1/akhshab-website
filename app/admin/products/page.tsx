@@ -1,10 +1,10 @@
 import { isAdminAuthed } from "@/lib/adminAuth";
 import LoginForm from "@/components/LoginForm";
-import GalleryManager from "@/components/GalleryManager";
+import ProductForm from "@/components/ProductForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminGalleryPage() {
+export default async function AdminProductsPage() {
   const authed = await isAdminAuthed();
   if (!authed) return <LoginForm />;
 
@@ -15,7 +15,7 @@ export default async function AdminGalleryPage() {
           ← رجوع للحجوزات
         </a>
       </div>
-      <GalleryManager />
+      <ProductForm />
     </>
   );
 }

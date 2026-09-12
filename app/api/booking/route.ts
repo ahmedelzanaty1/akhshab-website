@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, phone, room_type, preferred_date, notes } = body;
+    const { name, phone, room_type, preferred_date, notes, contact_method } = body;
 
     if (!name || !phone) {
       return NextResponse.json(
@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
           room_type: room_type || null,
           preferred_date: preferred_date || null,
           notes: notes || null,
+          contact_method: contact_method || null,
           status: "جديد",
         },
       ])
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
               <p><b>الموبايل:</b> ${phone}</p>
               <p><b>نوع الأثاث:</b> ${room_type || "-"}</p>
               <p><b>التاريخ المفضل:</b> ${preferred_date || "-"}</p>
+              <p><b>أفضل طريقة تواصل:</b> ${contact_method || "-"}</p>
               <p><b>ملاحظات:</b> ${notes || "-"}</p>
             </div>
           `,

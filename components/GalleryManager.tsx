@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CATEGORIES } from "@/lib/constants";
 
-type GalleryImage = { name: string; url: string };
+type GalleryImage = { name: string; url: string; category: string };
 
 export default function GalleryManager() {
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadCategory, setUploadCategory] = useState(CATEGORIES[0]);
+  const [activeTab, setActiveTab] = useState<string>("الكل");
 
   async function loadImages() {
     setLoading(true);
@@ -27,6 +30,13 @@ export default function GalleryManager() {
     loadImages();
   }, []);
 
+  const tabs = useMemo(() => {
+    const cats = Array.from(new Set(images.map((i) => i.category)));
+    return ["الكل", ...cats];
+  }, [images]);
+
+  const visible = activeTab === "الكل" ? images : images.filter((i) => i.category === activeTab);
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -34,11 +44,9 @@ export default function GalleryManager() {
     setError("");
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("category", uploadCategory);
     try {
-      const res = await fetch("/api/admin/gallery", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("/api/admin/gallery", { method: "POST", body: formData });
       if (!res.ok) throw new Error("upload failed");
       await loadImages();
     } catch {
@@ -70,29 +78,46 @@ export default function GalleryManager() {
         إدارة صور الجاليري
       </h2>
       <p style={{ color: "var(--cream-dim)", marginBottom: 30 }}>
-        الصور دي بتظهر تلقائي في صفحة الموقع الرئيسية.
+        الصور دي بتظهر تلقائي في صفحة الموقع الرئيسية، مقسمة حسب الكاتيجوري.
       </p>
 
-      <label
-        className="btn btn-gold"
-        style={{ display: "inline-block", marginBottom: 30, cursor: "pointer" }}
-      >
-        {uploading ? "بيترفع..." : "ارفع صورة جديدة"}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleUpload}
-          disabled={uploading}
-          style={{ display: "none" }}
-        />
-      </label>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 30 }}>
+        <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+          {CATEGORIES.map((c) => (
+            <option key={c}>{c}</option>
+          ))}
+        </select>
+        <label className="btn btn-gold" style={{ display: "inline-block", cursor: "pointer" }}>
+          {uploading ? "بيترفع..." : "ارفع صورة جديدة"}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleUpload}
+            disabled={uploading}
+            style={{ display: "none" }}
+          />
+        </label>
+      </div>
 
       {error && <p style={{ color: "#C97A5A", marginBottom: 20 }}>{error}</p>}
 
+      <div className="chip-group" style={{ marginBottom: 24 }}>
+        {tabs.map((t) => (
+          <button
+            key={t}
+            className={`chip${activeTab === t ? " active" : ""}`}
+            onClick={() => setActiveTab(t)}
+            type="button"
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <p style={{ color: "var(--muted)" }}>بيتحمل...</p>
-      ) : images.length === 0 ? (
-        <p style={{ color: "var(--muted)" }}>لسه مفيش صور مرفوعة.</p>
+      ) : visible.length === 0 ? (
+        <p style={{ color: "var(--muted)" }}>لسه مفيش صور في القسم ده.</p>
       ) : (
         <div
           style={{
@@ -101,7 +126,7 @@ export default function GalleryManager() {
             gap: 14,
           }}
         >
-          {images.map((img) => (
+          {visible.map((img) => (
             <div
               key={img.name}
               style={{
@@ -116,6 +141,20 @@ export default function GalleryManager() {
                 alt={img.name}
                 style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }}
               />
+              <span
+                style={{
+                  position: "absolute",
+                  bottom: 6,
+                  right: 6,
+                  fontSize: 10.5,
+                  background: "rgba(14,10,7,.85)",
+                  color: "var(--gold-bright)",
+                  padding: "3px 8px",
+                  borderRadius: 20,
+                }}
+              >
+                {img.category}
+              </span>
               <button
                 onClick={() => handleDelete(img.name)}
                 style={{
