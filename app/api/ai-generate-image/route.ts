@@ -2,76 +2,60 @@ import { NextRequest, NextResponse } from "next/server";
 
 const IMG_COOKIE = "akhshab_img_gen_count";
 const MAX_PER_SESSION = 2;
+const CF_MODEL = "@cf/black-forest-labs/flux-1-schnell";
 
-// المدة القصوى المسموحة للفانكشن - توليد الصور ممكن ياخد وقت أطول
-// من الطبيعي خصوصًا أول مرة بتحمل الموديل. لو خطة Vercel بتاعتك بتسمح
-// بمدة أطول، ارفع الرقم ده.
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 function buildPrompt(room: string, style: string, notes: string) {
-  return `Luxury interior design photo of a ${room}, ${style} style, warm dark wood tones with brass and gold accents, natural wood grain furniture, professional architectural photography, warm ambient lighting, brand identity: AKHSHAB wood designs. ${notes || ""}`;
+  return `Professional interior design photo of a ${room}, ${style} style. Warm dark wood tones with brass and gold accents, natural wood grain furniture, elegant minimal-luxury composition, soft warm ambient lighting, high-end architectural photography. Brand aesthetic: AKHSHAB wood designs. ${notes || ""}`;
 }
 
-async function generateViaModelRunner(prompt: string): Promise<string | null> {
-  const baseUrl = process.env.MODEL_RUNNER_URL;
-  if (!baseUrl) return null;
-
-  const model = process.env.MODEL_RUNNER_MODEL || "stable-diffusion";
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
+async function generateViaCloudflare(
+  prompt: string
+): Promise<{ image: string | null; quotaExhausted: boolean }> {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId || !apiToken) return { image: null, quotaExhausted: false };
 
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (process.env.MODEL_RUNNER_API_KEY) {
-      headers.Authorization = `Bearer ${process.env.MODEL_RUNNER_API_KEY}`;
-    }
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${CF_MODEL}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        // steps=4 هو الافتراضي والأرخص للموديل ده - بنسيبه كدا عمدًا
+        // عشان نحافظ على الرصيد المجاني اليومي (10,000 neuron/يوم) قد ما نقدر.
+        body: JSON.stringify({ prompt, steps: 4 }),
+      }
+    );
 
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/engines/diffusers/v1/images/generations`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model, prompt }),
-      signal: controller.signal,
-    });
+    if (res.status === 429) {
+      // خلص الرصيد المجاني اليومي بتاع Cloudflare
+      return { image: null, quotaExhausted: true };
+    }
 
     if (!res.ok) {
-      console.error("Model Runner error:", res.status, await res.text());
-      return null;
+      const errText = await res.text();
+      console.error("Cloudflare Workers AI error:", res.status, errText);
+      // بعض أخطاء Cloudflare بترجع 200 مع success:false وكود خطأ بيدل
+      // على انتهاء الحصة كمان - بنتحقق من النص لو فيه إشارة لكدا
+      const quotaLike = /quota|limit|rate/i.test(errText);
+      return { image: null, quotaExhausted: quotaLike };
     }
-    const data = await res.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    return b64 ? `data:image/png;base64,${b64}` : null;
-  } catch (err) {
-    console.error("Model Runner unreachable:", err);
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
-async function generateViaOpenRouter(prompt: string): Promise<string | null> {
-  if (!process.env.OPENROUTER_API_KEY) return null;
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/images", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3.1-flash-lite-image",
-        prompt,
-      }),
-    });
-    if (!res.ok) {
-      console.error("OpenRouter image error:", res.status, await res.text());
-      return null;
-    }
     const data = await res.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    return b64 ? `data:image/png;base64,${b64}` : null;
+    if (!data?.success || !data?.result?.image) {
+      const quotaLike = JSON.stringify(data?.errors || "").match(/quota|limit|rate/i);
+      return { image: null, quotaExhausted: !!quotaLike };
+    }
+
+    return { image: `data:image/jpeg;base64,${data.result.image}`, quotaExhausted: false };
   } catch (err) {
-    console.error("OpenRouter image generation failed:", err);
-    return null;
+    console.error("Cloudflare Workers AI unreachable:", err);
+    return { image: null, quotaExhausted: false };
   }
 }
 
@@ -88,28 +72,18 @@ export async function POST(req: NextRequest) {
   const { room, style, notes } = await req.json();
   const prompt = buildPrompt(room, style, notes);
 
-  // بنجرب الـ Model Runner بتاعك الأول (مجاني، شغال على السيرفر بتاعك)،
-  // ولو مش متظبط أو مش متاح دلوقتي، بنرجع تلقائي لـ OpenRouter
-  // (فيه تكلفة صغيرة لكل صورة) عشان الفيتشر يفضل شغال للعميل.
-  let image = await generateViaModelRunner(prompt);
-  let source = "model-runner";
+  const { image, quotaExhausted } = await generateViaCloudflare(prompt);
 
   if (!image) {
-    image = await generateViaOpenRouter(prompt);
-    source = "openrouter-fallback";
-  }
-
-  if (!image) {
-    return NextResponse.json(
-      { error: "معرفناش نولّد الصورة دلوقتي، جرب تاني كمان شوية." },
-      { status: 500 }
-    );
+    const message = quotaExhausted
+      ? "معرفناش نعمل صور دلوقتي، جرب تاني بكرا. آسفين! 🙏"
+      : "معرفناش نولّد الصورة دلوقتي، جرب تاني كمان شوية.";
+    return NextResponse.json({ error: message }, { status: quotaExhausted ? 429 : 500 });
   }
 
   const newCount = currentCount + 1;
   const response = NextResponse.json({
     image,
-    source,
     remaining: MAX_PER_SESSION - newCount,
   });
   response.cookies.set(IMG_COOKIE, String(newCount), {
