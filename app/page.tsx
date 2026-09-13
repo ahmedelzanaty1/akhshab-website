@@ -537,7 +537,7 @@ export default function Home() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M15 3h-2a5 5 0 0 0-5 5v2H6v4h2v7h4v-7h3l1-4h-4V8a1 1 0 0 1 1-1h3z"/></svg>
               فيسبوك أخشاب
             </a>
-            <a className="social-link" href="https://wa.me/201014348464" target="_blank" rel="noopener">
+            <a className="social-link" href="https://wa.me/201555970059" target="_blank" rel="noopener">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 9.5c0 4 3 6.5 6 6.5"/></svg>
               واتساب مباشر
             </a>
@@ -822,7 +822,7 @@ export default function Home() {
               <div className="footer-col">
                 <h5>تواصل</h5>
                 <p dir="ltr" style={{ textAlign: "right" }}>ahmedelzanaty001@gmail.com</p>
-                <p dir="ltr" style={{ textAlign: "right" }}>01014348464</p>
+                <p dir="ltr" style={{ textAlign: "right" }}>01555970059</p>
                 <p>طنطا — منطقة الاستاد — شارع البنداري</p>
               </div>
             </div>
