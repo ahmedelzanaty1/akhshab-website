@@ -17,8 +17,134 @@ type Product = {
   name: string;
   price: number;
   offer_price: number | null;
-  image_url: string | null;
+  image_urls: string[] | null;
 };
+
+function discountPercent(price: number, offer: number) {
+  if (!price || !offer || offer >= price) return 0;
+  return Math.round((1 - offer / price) * 100);
+}
+
+/* ---------- stacked "card fan" collection preview ---------- */
+function CollectionStack({
+  category,
+  images,
+  onOpen,
+}: {
+  category: string;
+  images: GalleryImage[];
+  onOpen: () => void;
+}) {
+  const preview = images.slice(0, 4);
+  return (
+    <div className="stack" onClick={onOpen}>
+      <div className="stack-frame">
+        {preview.map((img, i) => {
+          const depth = preview.length - 1 - i;
+          const angle = (i - (preview.length - 1) / 2) * 6;
+          const offsetX = (i - (preview.length - 1) / 2) * 22;
+          return (
+            <div
+              className="stack-card"
+              key={img.name}
+              style={{
+                zIndex: depth + 1,
+                animationDelay: `${i * 0.1}s`,
+                transform: `translateX(${offsetX}px) rotate(${angle}deg)`,
+              }}
+            >
+              <img src={img.url} alt={category} loading="lazy" />
+            </div>
+          );
+        })}
+      </div>
+      <div className="stack-label">{category}</div>
+      <div className="stack-count">{images.length} صورة</div>
+    </div>
+  );
+}
+
+/* ---------- simple lightbox for browsing a full collection ---------- */
+function CollectionLightbox({
+  category,
+  images,
+  onClose,
+}: {
+  category: string;
+  images: GalleryImage[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="lightbox-overlay" onClick={onClose}>
+      <div className="lightbox-panel" onClick={(e) => e.stopPropagation()}>
+        <button className="lightbox-close" onClick={onClose} aria-label="قفل">×</button>
+        <h3 style={{ fontFamily: "Cairo, sans-serif", fontSize: 20 }}>{category}</h3>
+        <div className="lightbox-grid">
+          {images.map((img) => (
+            <img key={img.name} src={img.url} alt={category} loading="lazy" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- product detail modal with image carousel ---------- */
+function ProductModal({ product, onClose }: { product: Product; onClose: () => void }) {
+  const images = product.image_urls && product.image_urls.length ? product.image_urls : [];
+  const [index, setIndex] = useState(0);
+  const hasOffer = !!product.offer_price && product.offer_price < product.price;
+  const disc = hasOffer ? discountPercent(product.price, product.offer_price as number) : 0;
+
+  return (
+    <div className="lightbox-overlay" onClick={onClose}>
+      <div className="lightbox-panel" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+        <button className="lightbox-close" onClick={onClose} aria-label="قفل">×</button>
+
+        {images.length > 0 && (
+          <div className="product-modal-img-wrap">
+            <img src={images[index]} alt={product.name} />
+            {images.length > 1 && (
+              <>
+                <button className="carousel-nav prev" onClick={() => setIndex((i) => (i - 1 + images.length) % images.length)}>‹</button>
+                <button className="carousel-nav next" onClick={() => setIndex((i) => (i + 1) % images.length)}>›</button>
+              </>
+            )}
+          </div>
+        )}
+        {images.length > 1 && (
+          <div className="carousel-dots">
+            {images.map((_, i) => (
+              <span key={i} className={i === index ? "active" : ""} />
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 20 }}>
+          <div className="cat" style={{ fontSize: 12, color: "var(--muted)" }}>{product.category}</div>
+          <h3 style={{ fontFamily: "Cairo, sans-serif", fontSize: 20, marginTop: 4 }}>{product.name}</h3>
+          <div style={{ marginTop: 10, fontSize: 16 }}>
+            {hasOffer ? (
+              <>
+                <span style={{ textDecoration: "line-through", color: "var(--muted)", marginLeft: 10 }}>
+                  {product.price} ج.م
+                </span>
+                <span style={{ color: "var(--gold-bright)", fontWeight: 800 }}>
+                  {product.offer_price} ج.م {disc > 0 && `(خصم ${disc}%)`}
+                </span>
+              </>
+            ) : (
+              <span style={{ color: "var(--gold-bright)", fontWeight: 800 }}>{product.price} ج.م</span>
+            )}
+          </div>
+          <a href="#booking" className="btn btn-gold" style={{ marginTop: 20 }} onClick={onClose}>
+            اسأل عن المنتج ده
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ---------- reusable scroll-reveal wrapper ---------- */
 function Reveal({ children }: { children: React.ReactNode }) {
@@ -174,24 +300,28 @@ export default function Home() {
     }
   }
 
-  /* ---- gallery state ---- */
+  /* ---- gallery state (grouped into per-category "stacks") ---- */
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
-  const [galleryTab, setGalleryTab] = useState("الكل");
+  const [openCollection, setOpenCollection] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/gallery")
       .then((r) => r.json())
       .then((d) => setGallery(d.images || []))
       .catch(() => {});
   }, []);
-  const galleryTabs = useMemo(() => {
-    const cats = Array.from(new Set(gallery.map((i) => i.category)));
-    return ["الكل", ...cats];
+  const collections = useMemo(() => {
+    const map = new Map<string, GalleryImage[]>();
+    gallery.forEach((img) => {
+      const list = map.get(img.category) || [];
+      list.push(img);
+      map.set(img.category, list);
+    });
+    return Array.from(map.entries()); // [ [category, images[]], ... ]
   }, [gallery]);
-  const visibleGallery =
-    galleryTab === "الكل" ? gallery : gallery.filter((i) => i.category === galleryTab);
 
   /* ---- products state ---- */
   const [products, setProducts] = useState<Product[]>([]);
+  const [openProduct, setOpenProduct] = useState<Product | null>(null);
   const [productTab, setProductTab] = useState("الكل");
   useEffect(() => {
     fetch("/api/products")
@@ -373,32 +503,29 @@ export default function Home() {
             </div>
           </Reveal>
 
-          <div className="gallery-tabs">
-            {galleryTabs.map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={`chip${galleryTab === t ? " active" : ""}`}
-                onClick={() => setGalleryTab(t)}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          {visibleGallery.length === 0 ? (
+          {collections.length === 0 ? (
             <p style={{ textAlign: "center", color: "var(--muted)", marginBottom: 40 }}>
-              لسه مفيش صور في القسم ده.
+              لسه مفيش صور مرفوعة.
             </p>
           ) : (
-            <div className="gallery-grid" key={galleryTab}>
-              {visibleGallery.map((img, i) => (
-                <div className="gallery-tile" key={img.name} style={{ animationDelay: `${i * 0.06}s` }}>
-                  <img src={img.url} alt={img.category} loading="lazy" />
-                  <span className="cat-label">{img.category}</span>
-                </div>
+            <div className="stacks-row">
+              {collections.map(([category, images]) => (
+                <CollectionStack
+                  key={category}
+                  category={category}
+                  images={images}
+                  onOpen={() => setOpenCollection(category)}
+                />
               ))}
             </div>
+          )}
+
+          {openCollection && (
+            <CollectionLightbox
+              category={openCollection}
+              images={gallery.filter((i) => i.category === openCollection)}
+              onClose={() => setOpenCollection(null)}
+            />
           )}
 
           <div className="social-links">
@@ -410,7 +537,7 @@ export default function Home() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M15 3h-2a5 5 0 0 0-5 5v2H6v4h2v7h4v-7h3l1-4h-4V8a1 1 0 0 1 1-1h3z"/></svg>
               فيسبوك أخشاب
             </a>
-            <a className="social-link" href="https://wa.me/201555970059" target="_blank" rel="noopener">
+            <a className="social-link" href="https://wa.me/201014348464" target="_blank" rel="noopener">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 20l1.1-5.4A8.5 8.5 0 1 1 21 11.5z"/><path d="M8.5 9.5c0 4 3 6.5 6 6.5"/></svg>
               واتساب مباشر
             </a>
@@ -450,11 +577,13 @@ export default function Home() {
             <div className="product-grid">
               {visibleProducts.map((p) => {
                 const hasOffer = !!p.offer_price && p.offer_price < p.price;
+                const disc = hasOffer ? discountPercent(p.price, p.offer_price as number) : 0;
+                const firstImage = p.image_urls?.[0];
                 return (
-                  <div className="product-card" key={p.id}>
+                  <div className="product-card" key={p.id} onClick={() => setOpenProduct(p)}>
                     <div className="thumb">
-                      {p.image_url && <img src={p.image_url} alt={p.name} />}
-                      {hasOffer && <span className="badge-offer">عرض</span>}
+                      {firstImage && <img src={firstImage} alt={p.name} />}
+                      {hasOffer && <span className="badge-offer">{disc > 0 ? `خصم ${disc}%` : "عرض"}</span>}
                     </div>
                     <div className="body">
                       <div className="cat">{p.category}</div>
@@ -475,6 +604,8 @@ export default function Home() {
               })}
             </div>
           )}
+
+          {openProduct && <ProductModal product={openProduct} onClose={() => setOpenProduct(null)} />}
         </div>
       </section>
 
@@ -691,7 +822,7 @@ export default function Home() {
               <div className="footer-col">
                 <h5>تواصل</h5>
                 <p dir="ltr" style={{ textAlign: "right" }}>ahmedelzanaty001@gmail.com</p>
-                <p dir="ltr" style={{ textAlign: "right" }}>01555970059</p>
+                <p dir="ltr" style={{ textAlign: "right" }}>01014348464</p>
                 <p>طنطا — منطقة الاستاد — شارع البنداري</p>
               </div>
             </div>

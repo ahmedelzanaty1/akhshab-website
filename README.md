@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# أخشاب — تحديثات V3
 
-## Getting Started
+تحديث تاني على نفس المشروع. اتبنى وجربته بـ `next build` قبل ما
+أبعتهولك ومفيش أخطاء — لكن اقرا الملاحظة الخاصة بنقطة 4 (توليد
+الصور) كويس، فيها قرار لازم تاخده.
 
-First, run the development server:
+## اللي اتعمل:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+### 1) الجاليري بقت "كولكشنز" مكدسة زي ورق الكوتشينة
+بدل الشبكة المسطحة، كل كاتيجوري (نوم/مكتب/صالون/سفرة/أبواب) دلوقتي
+بتظهر كـ "كومة" من أول 4 صور بزاوية بسيطة فوق بعض. دوس على الكومة
+يفتحلك كل صور الكاتيجوري دي في نافذة كبيرة.
+
+### 2) صور منفصلة للمنتجات (مش من الجاليري)
+في `/admin/products` دلوقتي تقدر ترفع أكتر من صورة للمنتج مباشرة (مش
+لازم تحطهم في جاليري "شغلنا" الأول). الصور دي بتتخزن في نفس الـ
+bucket بس فولدر منفصل (`products/`) فمش هتظهر في جاليري الموقع.
+العميل لما يدوس على المنتج في الموقع، بتفتحله نافذة فيها كل الصور
+وممكن يقلب بينهم بالأسهم.
+
+### 3) نسبة الخصم بتتحسب وتتعرض تلقائي
+لو حطيت سعر عرض أقل من السعر الأصلي، هيظهر "خصم X%" محسوبة تلقائي
+جنب المنتج، بدل كلمة "عرض" العامة.
+
+### 4) توليد الصور - Docker Model Runner
+ده يحتاج قرار منك، اقرا الفقرة دي كويس:
+
+Docker Model Runner فعلاً بيدعم توليد صور دلوقتي (عن طريق Diffusers
+engine + موديلات Stable Diffusion)، وبنيت الكود عشان يستخدمه. لكن
+فيه حاجة مهمة: **Vercel مش بيشغل Docker containers**. يعني الـ
+Model Runner لازم يكون شغال على جهاز تاني بتاعك (سيرفر أو VPS أو
+لاب توب فيه GPU) وميكونش `localhost` — لازم يكون متاح على رابط
+عام (public URL) على الإنترنت عشان الموقع اللي على Vercel يقدر
+يوصله.
+
+لحد ما تجهز سيرفر زي ده:
+- سيبت `MODEL_RUNNER_URL` فاضي في `.env.local`
+- الكود هيرجع تلقائي لـ OpenRouter (بتكلفة صغيرة ~3 سنت للصورة، زي
+  ما اتفقنا قبل كده) — يعني الفيتشر شغال دلوقتي من غير ما تستنى.
+
+لما يبقى عندك سيرفر بـ Docker Model Runner شغال ومتاح على رابط عام:
+1. حط الرابط في `MODEL_RUNNER_URL` (مثلاً `https://your-server.com:12434`)
+2. لو حاطط اسم موديل مختلف عن `stable-diffusion`، غيّر `MODEL_RUNNER_MODEL`
+3. الموقع هيستخدمه تلقائي أول حاجة، ولو مش متاح لأي سبب، هيرجع لـ
+   OpenRouter تلقائي برضه (مفيش نقطة فشل واحدة).
+
+⚠️ لو مش عايز تدخل في تعقيد تشغيل سيرفر GPU دلوقتي، سيب
+`MODEL_RUNNER_URL` فاضي والفيتشر هيفضل شغال عادي بتكلفة بسيطة. قولي
+لو عايز مساعدة في تجهيز سيرفر الـ Model Runner لما تكون جاهز.
+
+## SQL لازم تشغله في Supabase (مرة واحدة بس)
+
+```sql
+alter table products add column if not exists image_urls text[];
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+(عمود `image_url` القديم من التحديث اللي فات هيفضل موجود من غير
+استخدام — من غير مشكلة، تقدر تسيبه أو تشيله لاحقًا، مش هيأثر على
+حاجة.)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## الملفات المتأثرة
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+app/api/admin/gallery/route.ts     <- (نسختك اللي عدلتها، اتحطت زي ما هي)
+app/api/gallery/route.ts           <- (نسختك اللي عدلتها، اتحطت زي ما هي)
+app/api/ai-generate-image/route.ts <- استبدال (Model Runner + fallback)
+app/api/admin/products/route.ts    <- استبدال (image_urls array)
+app/api/admin/product-images/route.ts <- جديد (رفع صور المنتج)
+app/page.tsx                       <- استبدال (كولكشنز + مودال المنتج)
+app/globals.css                    <- إضافات في الآخر
+components/ProductForm.tsx         <- استبدال (رفع صور متعددة + نسبة خصم)
+.env.local                         <- إضافة متغيرات Model Runner (اختيارية)
+```
 
-## Learn More
+## الترتيب لحد الـ redeploy
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. شغّل الـ SQL فوق في Supabase
+2. انسخ الملفات فوق مشروعك
+3. قرر: هتشغل Model Runner دلوقتي ولا تسيبه على OpenRouter مؤقتًا؟
+4. `npm run dev` وجرب: افتح كولكشن، جرب تضيف منتج بأكتر من صورة
+   وسعر عرض، جرب توليد صورة من الـ AI
+5. `git add . && git commit -m "V3: stacked gallery, multi-image products, discounts, model runner" && git push`

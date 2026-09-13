@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const body = await req.json();
-  const { category, name, price, offer_price, image_url } = body;
+  const { category, name, price, offer_price, image_urls } = body;
 
   if (!category || !name || !price) {
     return NextResponse.json({ error: "البيانات ناقصة" }, { status: 400 });
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
         name,
         price,
         offer_price: offer_price || null,
-        image_url: image_url || null,
+        image_urls: image_urls && image_urls.length ? image_urls : null,
       },
     ])
     .select()
@@ -39,7 +39,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const body = await req.json();
-  const { id, category, name, price, offer_price, image_url } = body;
+  const { id, category, name, price, offer_price, image_urls } = body;
   if (!id) return NextResponse.json({ error: "id مطلوب" }, { status: 400 });
 
   const { data, error } = await supabaseAdmin
@@ -49,7 +49,7 @@ export async function PUT(req: NextRequest) {
       name,
       price,
       offer_price: offer_price || null,
-      image_url: image_url || null,
+      image_urls: image_urls && image_urls.length ? image_urls : null,
     })
     .eq("id", id)
     .select()
